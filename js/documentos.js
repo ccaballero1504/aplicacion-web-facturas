@@ -318,10 +318,13 @@ const Documentos = (() => {
         <div class="acciones">
           ${botonesTipo}
           <a class="boton" href="${t.ruta}/editar/${id}">Editar</a>
-          <button class="boton primario" id="pdf">Descargar PDF</button>
+          <button class="boton" id="pdf">Descargar PDF</button>
+          <button class="boton primario" id="enviar">Enviar por email</button>
           <button class="boton peligro" id="eliminar">Eliminar</button>
         </div>
       </div>
+      ${(doc.envios || []).length ? `<div class="envios no-print">✉️ ${doc.envios.slice().reverse().map((e) =>
+        `Enviado a ${U.esc(e.para || "—")} el ${U.fechaES(e.fecha.slice(0, 10))} a las ${e.fecha.slice(11, 16)} · ${U.esc(e.via)}`).join("<br>")}</div>` : ""}
 
       ${!emisor.nombre || !emisor.nif ? `<div class="aviso no-print">Faltan tus datos fiscales (nombre y NIF). Complétalos en <a href="#/ajustes">Ajustes</a> para que aparezcan en el documento.</div>` : ""}
       ${doc.presupuestoId ? `<p class="no-print texto-suave">Creada a partir de un <a href="#/presupuestos/ver/${doc.presupuestoId}">presupuesto</a>.</p>` : ""}
@@ -381,13 +384,21 @@ const Documentos = (() => {
 
     const $ = (sel) => cont.querySelector(sel);
 
-    $("#pdf").addEventListener("click", () => {
-      // "Guardar como PDF" desde el diálogo de impresión; el título de la página será el nombre del archivo.
-      const anterior = document.title;
-      document.title = nombre;
-      window.print();
-      document.title = anterior;
+    $("#pdf").addEventListener("click", async () => {
+      try { await PDF.descargar(doc, emisor); } catch (e) { alert(`No se pudo generar el PDF: ${e.message}`); }
     });
+
+    $("#enviar").addEventListener("click", () =>
+      Correo.abrirVentana(doc, emisor, async ({ para, via }) => {
+        // Registra el envío (con hora local) y, si era un presupuesto en borrador, lo marca como enviado.
+        const ahora = new Date();
+        const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString();
+        const actual = await DB.obtener("documentos", id);
+        actual.envios = [...(actual.envios || []), { fecha: local, para, via }];
+        if (actual.tipo === "presupuesto" && actual.estado === "borrador") actual.estado = "enviado";
+        await DB.poner("documentos", actual);
+        vista(tipo, id, cont);
+      }));
 
     $("#eliminar").addEventListener("click", async () => {
       if (!confirm(`¿Eliminar "${nombre}"? No se puede deshacer.`)) return;

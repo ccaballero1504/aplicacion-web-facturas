@@ -35,7 +35,40 @@ Correlativa por año: facturas `2026-0001`, presupuestos `P-2026-0001`. Opcional
 
 ### PDF
 
-El botón **Descargar PDF** abre el diálogo de impresión del navegador: elige *Guardar como PDF*. El archivo se llama como la factura.
+El botón **Descargar PDF** genera el archivo directamente (A4, con logo, varias páginas si hace falta). Se llama como la factura, p. ej. `Factura para Paco 2026-0001.pdf`.
+
+### Enviar por email
+
+En cada factura o presupuesto, **Enviar por email** abre una ventana con el destinatario, el asunto y el mensaje ya rellenos (las plantillas se editan en *Ajustes*). Hay dos formas de enviarlo:
+
+- **Sin conectar nada:** botones *Gmail*, *Outlook / Hotmail* y *App de correo*. Abren el correo con todo escrito y descargan el PDF, que hay que **adjuntar a mano**. Funciona siempre, también con doble clic.
+- **Con tu cuenta conectada** (*Ajustes → Correo electrónico*): se envía directamente desde tu Gmail u Outlook **con el PDF adjunto** y queda en tu carpeta de enviados. Requiere abrir la app desde `http://localhost:8000` y configurar los IDs de cliente una vez (ver abajo).
+
+Cada envío queda registrado en el documento, y los presupuestos en *Borrador* pasan a *Enviado*.
+
+## Configurar el envío automático (una sola vez)
+
+La app debe abrirse **siempre en la misma dirección**, por ejemplo `http://localhost:8000` (`python -m http.server 8000`). Esa dirección es la que se registra en Google y Microsoft.
+
+### Gmail (Google Cloud)
+
+1. Entra en <https://console.cloud.google.com> y crea un proyecto.
+2. *APIs y servicios → Biblioteca*: busca **Gmail API** y actívala.
+3. *Pantalla de consentimiento de OAuth*: tipo **Externo**, nombre de la app y tu email. En *Usuarios de prueba* añade las cuentas de Gmail que la usarán.
+4. *Credenciales → Crear credenciales → ID de cliente de OAuth*: tipo **Aplicación web**. En *Orígenes de JavaScript autorizados* añade `http://localhost:8000`.
+5. Copia el **ID de cliente** (`….apps.googleusercontent.com`) y pégalo en *Ajustes → Correo electrónico*.
+
+Mientras la app no esté verificada por Google, aparecerá un aviso de "app no verificada" (pulsa *Continuar*) y solo podrán usarla los usuarios de prueba (hasta 100).
+
+### Outlook / Hotmail (Microsoft Entra)
+
+1. Entra en <https://entra.microsoft.com> → *Registros de aplicaciones → Nuevo registro*.
+2. Tipos de cuenta: **Cuentas de cualquier directorio organizativo y cuentas Microsoft personales**.
+3. URI de redirección: plataforma **Aplicación de página única (SPA)** y dirección `http://localhost:8000/auth-microsoft.html`.
+4. En *Permisos de API* añade **Microsoft Graph → Permisos delegados → Mail.Send** (User.Read ya viene).
+5. Copia el **Id. de aplicación (cliente)** y pégalo en *Ajustes → Correo electrónico*.
+
+La sesión de Microsoft se renueva sola; pasadas 24 h puede pedir conectar de nuevo. La conexión se guarda solo en ese navegador y no se incluye en las copias de seguridad.
 
 ## Importante sobre los datos
 
@@ -47,9 +80,13 @@ Los datos viven solo en el navegador donde se crean. Si se borran los datos de n
 index.html          Página única con el menú
 css/estilos.css     Estilos (incluye los de impresión/PDF)
 js/utilidades.js    Cálculos de totales, numeración y formato
+js/pdf.js           Generación del PDF
+js/correo.js        Envío por email (Gmail / Outlook / abrir en el correo)
 js/db.js            Base de datos local (IndexedDB) y copia de seguridad
 js/documentos.js    Facturas y presupuestos: lista, editor y vista/PDF
 js/clientes.js      Clientes
 js/ajustes.js       Ajustes del emisor
 js/app.js           Navegación entre secciones
+auth-microsoft.html Página de retorno del inicio de sesión de Microsoft
+vendor/             pdf-lib (licencia MIT)
 ```

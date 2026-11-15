@@ -63,9 +63,12 @@ const DB = (() => {
   // ---------- Ajustes ----------
   const ajustesPorDefecto = () => ({
     id: "emisor", ...U.datosFiscalesVacios(), iban: "", logo: "", ivaPorDefecto: 21, irpfPorDefecto: 0, notasPie: "",
+    correo: { googleClientId: "", microsoftClientId: "", asunto: "", mensaje: "" },
   });
   async function obtenerAjustes() {
-    return { ...ajustesPorDefecto(), ...((await obtener("ajustes", "emisor")) || {}) };
+    const base = ajustesPorDefecto();
+    const guardados = (await obtener("ajustes", "emisor")) || {};
+    return { ...base, ...guardados, correo: { ...base.correo, ...(guardados.correo || {}) } };
   }
 
   // ---------- Documentos (facturas y presupuestos) ----------
