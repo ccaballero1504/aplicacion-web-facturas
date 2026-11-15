@@ -4,18 +4,35 @@ Aplicación de facturación para autónomos y empresas, hecha con **HTML, CSS y 
 
 ## Cómo abrirla
 
-**Opción 1 — doble clic:** abre `index.html` en Chrome, Edge o Firefox.
+### Opción recomendada: el ejecutable (no hay que instalar nada)
 
-**Opción 2 — localhost** (cualquiera de estas):
+En la carpeta `dist/` hay un programa para cada sistema. Todos llevan la aplicación dentro, la arrancan en `http://localhost:8000` y abren el navegador:
 
-```bash
-python -m http.server 8000      # y abre http://localhost:8000
-npx serve .                     # si tienes Node.js
-```
+| Sistema | Archivo |
+|---|---|
+| Windows | `facturas-windows.exe` |
+| Mac con chip Apple (M1, M2…) | `facturas-mac-apple` |
+| Mac con Intel | `facturas-mac-intel` |
+| Linux | `facturas-linux` |
 
-O con la extensión *Live Server* de VS Code.
+Ábrelo con doble clic (o desde la consola). Aparecerá una ventana de consola: **déjala abierta** mientras uses la aplicación y ciérrala (o pulsa `Ctrl+C`) para apagarla. Si lo abres otra vez estando ya en marcha, solo abre el navegador.
 
-> Los datos se guardan por "origen": lo que crees abriendo el archivo con doble clic no aparecerá en `localhost` y al revés. Elige una forma y úsala siempre.
+La primera vez el sistema puede avisar de que el programa no está firmado:
+
+- **Windows:** "Windows protegió su PC" → *Más información* → *Ejecutar de todas formas*.
+- **Mac:** clic derecho sobre el archivo → *Abrir* → *Abrir*. Si dice que no se puede abrir, en la Terminal: `chmod +x facturas-mac-apple` y vuelve a probar.
+- **Linux:** `chmod +x facturas-linux && ./facturas-linux`
+
+Opciones de consola: `-sin-navegador` (no abre el navegador) y `-puerto 8001` (otro puerto; no recomendado, porque los datos se guardan por dirección y el correo conectado está registrado para el 8000).
+
+Si el ejecutable está dentro de la carpeta del proyecto (junto a `index.html` o en `dist/`), usa esos archivos en lugar de su copia interna, así los cambios se ven sin recompilar. Para regenerar los ejecutables: `./lanzador/compilar.sh` (requiere Go).
+
+### Otras formas
+
+- **Doble clic en `index.html`:** funciona todo salvo conectar el correo.
+- **Servidor propio:** `python -m http.server 8000` y abre `http://localhost:8000`.
+
+> Los datos se guardan por dirección: lo creado con doble clic en `index.html` no aparece en `localhost:8000` y al revés. Usa siempre la misma forma (lo ideal, el ejecutable).
 
 ## Funcionalidades (v0.1)
 
@@ -48,7 +65,7 @@ Cada envío queda registrado en el documento, y los presupuestos en *Borrador* p
 
 ## Configurar el envío automático (una sola vez)
 
-La app debe abrirse **siempre en la misma dirección**, por ejemplo `http://localhost:8000` (`python -m http.server 8000`). Esa dirección es la que se registra en Google y Microsoft.
+La app debe abrirse **siempre en `http://localhost:8000`** (es lo que hace el ejecutable). Esa dirección es la que se registra en Google y Microsoft.
 
 ### Gmail (Google Cloud)
 
@@ -89,4 +106,6 @@ js/ajustes.js       Ajustes del emisor
 js/app.js           Navegación entre secciones
 auth-microsoft.html Página de retorno del inicio de sesión de Microsoft
 vendor/             pdf-lib (licencia MIT)
+lanzador/           Código del ejecutable (Go) y script para compilarlo
+dist/               Ejecutables para Windows, Mac y Linux
 ```
