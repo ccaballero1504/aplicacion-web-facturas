@@ -131,7 +131,20 @@ table.tabla { width: 100%; border-collapse: collapse; }
   .nav { width: auto; flex-direction: row; align-items: center; overflow-x: auto; padding: 10px; }
   .nav nav { flex-direction: row; }
   .nota-local { display: none; }
-  .contenido { padding: 18px 14px; }
+  .contenido { padding: 18px 14px; min-width: 0; }
+  .panel { overflow-x: auto; }
+  .tabla th, .tabla td { white-space: nowrap; }
   .hoja { padding: 24px; }
   .hoja .partes { grid-template-columns: 1fr; }
 }
+
+/* ---------- Añadidos versión HTML ---------- */
+a { color: var(--acento); }
+.volver { color: var(--suave); text-decoration: none; }
+.texto-suave { color: var(--suave); }
+.toast {
+  position: fixed; bottom: 20px; right: 20px; background: #141a2a; color: #fff;
+  padding: 10px 16px; border-radius: 6px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
+}
+.toast.visible { opacity: 1; }
+[hidden] { display: none !important; }
