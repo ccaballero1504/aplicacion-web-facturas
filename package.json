@@ -1,0 +1,25 @@
+{
+  "name": "aplicacion-web-facturas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicación web de facturación para autónomos y empresas. Funciona en local, sin servidor: los datos se guardan en el navegador.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "npx serve@latest out -l 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "dexie-react-hooks": "^1.1.7",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.7.0"
+  }
+}

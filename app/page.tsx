@@ -1,0 +1,10 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+export default function Inicio() {
+  const router = useRouter();
+  useEffect(() => router.replace("/facturas/"), [router]);
+  return null;
+}
