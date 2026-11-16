@@ -63,7 +63,7 @@ const DB = (() => {
   // ---------- Ajustes ----------
   const ajustesPorDefecto = () => ({
     id: "emisor", ...U.datosFiscalesVacios(), iban: "", logo: "", ivaPorDefecto: 21, irpfPorDefecto: 0, notasPie: "",
-    correo: { googleClientId: "", microsoftClientId: "", asunto: "", mensaje: "" },
+    correo: { asunto: "", mensaje: "" },
   });
   async function obtenerAjustes() {
     const base = ajustesPorDefecto();
@@ -99,8 +99,13 @@ const DB = (() => {
       if (!anterior || anterior.anio !== anio) {
         numero = U.siguienteNumero(await peticion(documentos.index("tipoAnio").getAll([doc.tipo, anio])));
       }
-      const datos = { ...doc, anio, numero, actualizado: new Date().toISOString() };
-      if (!datos.id) delete datos.id;
+      const ahora = new Date().toISOString();
+      const datos = { ...doc, anio, numero, actualizado: ahora };
+      if (!datos.id) {
+        delete datos.id;
+        datos.creado = ahora; // fecha y hora reales de creación (al guardarla por primera vez)
+        delete datos.envios;
+      }
       return peticion(documentos.put(datos));
     });
   }

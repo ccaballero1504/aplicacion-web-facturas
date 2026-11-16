@@ -15,12 +15,31 @@ const Documentos = (() => {
   const opciones = (lista, actual) =>
     lista.map(([v, t]) => `<option value="${U.esc(v)}" ${String(v) === String(actual) ? "selected" : ""}>${U.esc(t)}</option>`).join("");
 
+  const TRIMESTRES = [["1", "1.er trimestre (ene–mar)"], ["2", "2.º trimestre (abr–jun)"], ["3", "3.er trimestre (jul–sep)"], ["4", "4.º trimestre (oct–dic)"]];
+  const trimestreDe = (fechaISO) => String(Math.ceil(Number(fechaISO.slice(5, 7)) / 3));
+
+  /** Guarda un envío en el historial del documento; un presupuesto en borrador pasa a "enviado". */
+  async function registrarEnvio(id, { para, via }) {
+    const ahora = new Date();
+    const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString();
+    const actual = await DB.obtener("documentos", id);
+    actual.envios = [...(actual.envios || []), { fecha: local, para, via }];
+    if (actual.tipo === "presupuesto" && actual.estado === "borrador") actual.estado = "enviado";
+    await DB.poner("documentos", actual);
+  }
+
   // =====================================================================
   // LISTA
   // =====================================================================
   async function lista(tipo, cont) {
     const t = TEXTOS[tipo];
     const docs = await DB.porIndice("documentos", "tipo", tipo);
+    const anios = [...new Set([new Date().getFullYear(), ...docs.map((d) => Number(d.fecha.slice(0, 4)))])].sort((a, b) => b - a);
+
+    // Año, trimestre y estado se recuerdan al volver al listado (durante la sesión); la búsqueda de texto no.
+    const claveFiltros = `filtros-${tipo}`;
+    let filtros = {};
+    try { filtros = JSON.parse(sessionStorage.getItem(claveFiltros)) || {}; } catch (_) {}
 
     cont.innerHTML = `
       <div class="cabecera">
@@ -30,61 +49,106 @@ const Documentos = (() => {
       <div class="panel">
         <div class="filtros">
           <input id="busqueda" placeholder="Buscar por nombre, número o cliente…">
-          <select id="filtro-estado"><option value="">Todos los estados</option>${opciones(t.estados)}</select>
+          <select id="filtro-anio" aria-label="Año"><option value="">Todos los años</option>${opciones(anios.map((a) => [a, a]), filtros.anio)}</select>
+          <select id="filtro-trimestre" aria-label="Trimestre"><option value="">Todos los trimestres</option>${opciones(TRIMESTRES, filtros.trimestre)}</select>
+          <select id="filtro-estado" aria-label="Estado"><option value="">Todos los estados</option>${opciones(t.estados, filtros.estado)}</select>
         </div>
         <div id="resultados"></div>
       </div>`;
 
+    const $ = (sel) => cont.querySelector(sel);
+
     const pintar = () => {
-      const q = cont.querySelector("#busqueda").value.trim().toLowerCase();
-      const estado = cont.querySelector("#filtro-estado").value;
+      filtros = {
+        q: $("#busqueda").value, anio: $("#filtro-anio").value, trimestre: $("#filtro-trimestre").value, estado: $("#filtro-estado").value,
+      };
+      try { sessionStorage.setItem(claveFiltros, JSON.stringify({ ...filtros, q: "" })); } catch (_) {}
+      const q = filtros.q.trim().toLowerCase();
       const filtrados = docs
-        .filter((d) => !estado || d.estado === estado)
+        .filter((d) => !filtros.estado || d.estado === filtros.estado)
+        .filter((d) => !filtros.anio || d.fecha.slice(0, 4) === filtros.anio)
+        .filter((d) => !filtros.trimestre || trimestreDe(d.fecha) === filtros.trimestre)
         .filter((d) => !q || `${U.nombreDocumento(d)} ${d.cliente.nombre} ${d.cliente.nif}`.toLowerCase().includes(q))
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.anio - a.anio || b.numero - a.numero);
-      const res = cont.querySelector("#resultados");
+      const res = $("#resultados");
 
       if (!filtrados.length) {
         res.innerHTML = `<div class="vacio">${docs.length ? "No hay resultados con estos filtros." : `Todavía no hay ${t.plural.toLowerCase()}.`}</div>`;
         return;
       }
-      const suma = filtrados.reduce((s, d) => s + U.calcularTotales(d.lineas, d.irpf).total, 0);
+
+      const totales = filtrados.map((d) => U.calcularTotales(d.lineas, d.irpf));
+      const suma = (k) => U.redondear(totales.reduce((s, x) => s + x[k], 0));
       res.innerHTML = `
+        <div class="resumen">
+          <div><span>Base imponible</span><strong>${U.euros(suma("base"))}</strong></div>
+          <div><span>IVA</span><strong>${U.euros(suma("totalIva"))}</strong></div>
+          <div><span>Retención IRPF</span><strong>${U.euros(suma("irpf"))}</strong></div>
+          <div><span>Total</span><strong>${U.euros(suma("total"))}</strong></div>
+        </div>
         <table class="tabla">
-          <thead><tr><th>${t.singular}</th><th>Fecha</th><th>Cliente</th><th>Estado</th><th class="num">Total</th></tr></thead>
+          <thead><tr>
+            <th></th><th>${t.singular}</th><th>Fecha</th><th>Creada</th><th>Cliente</th><th>Estado</th><th class="num">Total</th><th></th>
+          </tr></thead>
           <tbody>
-            ${filtrados.map((d) => `
+            ${filtrados.map((d, i) => `
               <tr class="clic" data-id="${d.id}">
+                <td><button class="boton pequeno" data-duplicar="${d.id}" title="Crear una ${t.singular.toLowerCase()} nueva a partir de esta">Duplicar</button></td>
                 <td><strong>${U.esc(U.nombreDocumento(d))}</strong></td>
                 <td>${U.fechaES(d.fecha)}</td>
+                <td>${U.fechaLocal(d.creado)}</td>
                 <td>${d.cliente.nombre ? U.esc(d.cliente.nombre) : '<span class="texto-suave">Sin cliente</span>'}</td>
                 <td>${etiqueta(tipo, d.estado)}</td>
-                <td class="num">${U.euros(U.calcularTotales(d.lineas, d.irpf).total)}</td>
+                <td class="num">${U.euros(totales[i].total)}</td>
+                <td class="num"><button class="boton pequeno" data-enviar="${d.id}">Enviar por email</button></td>
               </tr>`).join("")}
           </tbody>
           <tfoot><tr>
-            <td colspan="4" class="texto-suave" style="padding-top:12px">${filtrados.length} ${filtrados.length === 1 ? t.singular.toLowerCase() : t.plural.toLowerCase()}</td>
-            <td class="num" style="padding-top:12px"><strong>${U.euros(suma)}</strong></td>
+            <td colspan="8" class="texto-suave" style="padding-top:12px">${filtrados.length} ${filtrados.length === 1 ? t.singular.toLowerCase() : t.plural.toLowerCase()}</td>
           </tr></tfoot>
         </table>`;
-      res.querySelectorAll("tr[data-id]").forEach((tr) =>
-        tr.addEventListener("click", () => (location.hash = `${t.ruta}/ver/${tr.dataset.id}`)));
     };
 
-    cont.querySelector("#busqueda").addEventListener("input", pintar);
-    cont.querySelector("#filtro-estado").addEventListener("change", pintar);
+    $("#resultados").addEventListener("click", async (e) => {
+      const dup = e.target.closest("[data-duplicar]");
+      const env = e.target.closest("[data-enviar]");
+      const fila = e.target.closest("tr[data-id]");
+      if (dup) {
+        location.hash = `${t.ruta}/duplicar/${dup.dataset.duplicar}`;
+      } else if (env) {
+        const id = Number(env.dataset.enviar);
+        const [doc, emisor] = await Promise.all([DB.obtener("documentos", id), DB.obtenerAjustes()]);
+        Correo.abrirVentana(doc, emisor, async (envio) => {
+          await registrarEnvio(id, envio);
+          lista(tipo, cont);
+        });
+      } else if (fila) {
+        location.hash = `${t.ruta}/ver/${fila.dataset.id}`;
+      }
+    });
+    $("#busqueda").addEventListener("input", pintar);
+    ["#filtro-anio", "#filtro-trimestre", "#filtro-estado"].forEach((s) => $(s).addEventListener("change", pintar));
     pintar();
   }
 
   // =====================================================================
   // EDITOR
   // =====================================================================
-  async function editor(tipo, id, cont) {
+  async function editor(tipo, id, cont, duplicarDe = null) {
     const t = TEXTOS[tipo];
     let doc;
     if (id) {
       doc = await DB.obtener("documentos", id);
       if (!doc || doc.tipo !== tipo) return noEncontrado(tipo, cont);
+    } else if (duplicarDe) {
+      // Copia el contenido de otro documento, pero como uno nuevo: fecha de hoy, número nuevo, sin envíos.
+      const origen = await DB.obtener("documentos", duplicarDe);
+      if (!origen || origen.tipo !== tipo) return noEncontrado(tipo, cont);
+      const base = await DB.nuevoDocumento(tipo);
+      doc = {
+        ...base, titulo: origen.titulo, clienteId: origen.clienteId, cliente: { ...origen.cliente },
+        lineas: origen.lineas.map((l) => ({ ...l })), irpf: origen.irpf, notas: origen.notas,
+      };
     } else {
       doc = await DB.nuevoDocumento(tipo);
     }
@@ -94,9 +158,9 @@ const Documentos = (() => {
 
     cont.innerHTML = `
       <div class="cabecera">
-        <h1>${id ? `Editar ${t.singular.toLowerCase()}` : t.nuevo}</h1>
+        <h1>${id ? `Editar ${t.singular.toLowerCase()}` : duplicarDe ? `${t.nuevo} (copia)` : t.nuevo}</h1>
         <div class="acciones">
-          <a href="${id ? `${t.ruta}/ver/${id}` : t.ruta}" class="boton">Cancelar</a>
+          <a href="${id ? `${t.ruta}/ver/${id}` : duplicarDe ? `${t.ruta}/ver/${duplicarDe}` : t.ruta}" class="boton">Cancelar</a>
           <button class="boton primario" id="guardar">Guardar</button>
         </div>
       </div>
@@ -317,6 +381,7 @@ const Documentos = (() => {
         </div>
         <div class="acciones">
           ${botonesTipo}
+          <a class="boton" href="${t.ruta}/duplicar/${id}">Duplicar</a>
           <a class="boton" href="${t.ruta}/editar/${id}">Editar</a>
           <button class="boton" id="pdf">Descargar PDF</button>
           <button class="boton primario" id="enviar">Enviar por email</button>
@@ -389,14 +454,8 @@ const Documentos = (() => {
     });
 
     $("#enviar").addEventListener("click", () =>
-      Correo.abrirVentana(doc, emisor, async ({ para, via }) => {
-        // Registra el envío (con hora local) y, si era un presupuesto en borrador, lo marca como enviado.
-        const ahora = new Date();
-        const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString();
-        const actual = await DB.obtener("documentos", id);
-        actual.envios = [...(actual.envios || []), { fecha: local, para, via }];
-        if (actual.tipo === "presupuesto" && actual.estado === "borrador") actual.estado = "enviado";
-        await DB.poner("documentos", actual);
+      Correo.abrirVentana(doc, emisor, async (envio) => {
+        await registrarEnvio(id, envio);
         vista(tipo, id, cont);
       }));
 

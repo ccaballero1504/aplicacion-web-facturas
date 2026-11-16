@@ -23,13 +23,13 @@ La primera vez el sistema puede avisar de que el programa no está firmado:
 - **Mac:** clic derecho sobre el archivo → *Abrir* → *Abrir*. Si dice que no se puede abrir, en la Terminal: `chmod +x facturas-mac-apple` y vuelve a probar.
 - **Linux:** `chmod +x facturas-linux && ./facturas-linux`
 
-Opciones de consola: `-sin-navegador` (no abre el navegador) y `-puerto 8001` (otro puerto; no recomendado, porque los datos se guardan por dirección y el correo conectado está registrado para el 8000).
+Opciones de consola: `-sin-navegador` (no abre el navegador) y `-puerto 8001` (otro puerto; no recomendado, porque los datos se guardan por dirección y no verías los creados en el 8000).
 
 Si el ejecutable está dentro de la carpeta del proyecto (junto a `index.html` o en `dist/`), usa esos archivos en lugar de su copia interna, así los cambios se ven sin recompilar. Para regenerar los ejecutables: `./lanzador/compilar.sh` (requiere Go).
 
 ### Otras formas
 
-- **Doble clic en `index.html`:** funciona todo salvo conectar el correo.
+- **Doble clic en `index.html`:** funciona todo igual.
 - **Servidor propio:** `python -m http.server 8000` y abre `http://localhost:8000`.
 
 > Los datos se guardan por dirección: lo creado con doble clic en `index.html` no aparece en `localhost:8000` y al revés. Usa siempre la misma forma (lo ideal, el ejecutable).
@@ -56,36 +56,16 @@ El botón **Descargar PDF** genera el archivo directamente (A4, con logo, varias
 
 ### Enviar por email
 
-En cada factura o presupuesto, **Enviar por email** abre una ventana con el destinatario, el asunto y el mensaje ya rellenos (las plantillas se editan en *Ajustes*). Hay dos formas de enviarlo:
+Botón **Enviar por email** en cada fila del listado y en la vista de cada factura o presupuesto. Abre una ventana con el destinatario (email del cliente), el asunto y el mensaje ya escritos; se pueden cambiar antes de enviar. El texto por defecto se define en *Ajustes → Mensaje para los correos*, con variables como `{cliente}`, `{numero}` o `{total}`.
 
-- **Sin conectar nada:** botones *Gmail*, *Outlook / Hotmail* y *App de correo*. Abren el correo con todo escrito y descargan el PDF, que hay que **adjuntar a mano**. Funciona siempre, también con doble clic.
-- **Con tu cuenta conectada** (*Ajustes → Correo electrónico*): se envía directamente desde tu Gmail u Outlook **con el PDF adjunto** y queda en tu carpeta de enviados. Requiere abrir la app desde `http://localhost:8000` y configurar los IDs de cliente una vez (ver abajo).
+Los botones *Abrir en Gmail*, *Abrir en Outlook / Hotmail* y *App de correo* abren el borrador con todo escrito y descargan el PDF: solo hay que **adjuntarlo** y enviar. Después, *Ya lo he enviado* lo registra en el documento (y los presupuestos en *Borrador* pasan a *Enviado*).
 
-Cada envío queda registrado en el documento, y los presupuestos en *Borrador* pasan a *Enviado*.
+### Listado
 
-## Configurar el envío automático (una sola vez)
-
-La app debe abrirse **siempre en `http://localhost:8000`** (es lo que hace el ejecutable). Esa dirección es la que se registra en Google y Microsoft.
-
-### Gmail (Google Cloud)
-
-1. Entra en <https://console.cloud.google.com> y crea un proyecto.
-2. *APIs y servicios → Biblioteca*: busca **Gmail API** y actívala.
-3. *Pantalla de consentimiento de OAuth*: tipo **Externo**, nombre de la app y tu email. En *Usuarios de prueba* añade las cuentas de Gmail que la usarán.
-4. *Credenciales → Crear credenciales → ID de cliente de OAuth*: tipo **Aplicación web**. En *Orígenes de JavaScript autorizados* añade `http://localhost:8000`.
-5. Copia el **ID de cliente** (`….apps.googleusercontent.com`) y pégalo en *Ajustes → Correo electrónico*.
-
-Mientras la app no esté verificada por Google, aparecerá un aviso de "app no verificada" (pulsa *Continuar*) y solo podrán usarla los usuarios de prueba (hasta 100).
-
-### Outlook / Hotmail (Microsoft Entra)
-
-1. Entra en <https://entra.microsoft.com> → *Registros de aplicaciones → Nuevo registro*.
-2. Tipos de cuenta: **Cuentas de cualquier directorio organizativo y cuentas Microsoft personales**.
-3. URI de redirección: plataforma **Aplicación de página única (SPA)** y dirección `http://localhost:8000/auth-microsoft.html`.
-4. En *Permisos de API* añade **Microsoft Graph → Permisos delegados → Mail.Send** (User.Read ya viene).
-5. Copia el **Id. de aplicación (cliente)** y pégalo en *Ajustes → Correo electrónico*.
-
-La sesión de Microsoft se renueva sola; pasadas 24 h puede pedir conectar de nuevo. La conexión se guarda solo en ese navegador y no se incluye en las copias de seguridad.
+- Columnas **Fecha** (fecha de la factura) y **Creada** (día en que se creó en la app, automática).
+- Filtros por **año** y **trimestre** (1.º ene–mar, 2.º abr–jun, 3.º jul–sep, 4.º oct–dic), además de estado y búsqueda. Encima de la tabla se muestra la suma de base imponible, IVA, retención y total de lo filtrado (útil para las declaraciones trimestrales).
+- **Duplicar** (a la izquierda de cada fila): abre el editor con una copia como documento nuevo, con fecha de hoy y número nuevo.
+- **Enviar por email** (a la derecha de cada fila).
 
 ## Importante sobre los datos
 
@@ -98,13 +78,12 @@ index.html          Página única con el menú
 css/estilos.css     Estilos (incluye los de impresión/PDF)
 js/utilidades.js    Cálculos de totales, numeración y formato
 js/pdf.js           Generación del PDF
-js/correo.js        Envío por email (Gmail / Outlook / abrir en el correo)
+js/correo.js        Ventana de envío por email (abre Gmail, Outlook o la app de correo)
 js/db.js            Base de datos local (IndexedDB) y copia de seguridad
 js/documentos.js    Facturas y presupuestos: lista, editor y vista/PDF
 js/clientes.js      Clientes
 js/ajustes.js       Ajustes del emisor
 js/app.js           Navegación entre secciones
-auth-microsoft.html Página de retorno del inicio de sesión de Microsoft
 vendor/             pdf-lib (licencia MIT)
 lanzador/           Código del ejecutable (Go) y script para compilarlo
 dist/               Ejecutables para Windows, Mac y Linux

@@ -32,7 +32,7 @@ const rutaComprobacion = "/__facturas"
 var version = "dev" // se rellena al compilar
 
 func main() {
-	puerto := flag.Int("puerto", 8000, "puerto local (si lo cambias, el correo conectado dejará de funcionar)")
+	puerto := flag.Int("puerto", 8000, "puerto local (si lo cambias, no verás los datos guardados en el 8000)")
 	sinNavegador := flag.Bool("sin-navegador", false, "no abrir el navegador automáticamente")
 	flag.Parse()
 
@@ -58,7 +58,7 @@ func main() {
 			"No se puede usar el puerto %d: otro programa lo está usando.\n"+
 				"Cierra ese programa o arranca con otro puerto, por ejemplo:\n"+
 				"  facturas -puerto 8001\n"+
-				"(Ojo: con otro puerto los datos guardados no aparecerán y el correo conectado dejará de funcionar.)", *puerto))
+				"(Ojo: con otro puerto no verás los datos guardados en el puerto 8000.)", *puerto))
 	}
 
 	mux := http.NewServeMux()

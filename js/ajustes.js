@@ -54,28 +54,10 @@ const Ajustes = (() => {
       </div>
 
       <div class="panel">
-        <h2>Correo electrónico</h2>
+        <h2>Mensaje para los correos</h2>
         <p class="texto-suave" style="margin-top:-6px">
-          Conecta tu cuenta para enviar facturas y presupuestos con el PDF adjunto directamente desde la aplicación.
-          Sin conectar nada, también puedes abrirlos en tu correo con el mensaje ya escrito.
+          Texto con el que se abrirá el borrador al pulsar «Enviar por email». Podrás cambiarlo antes de cada envío.
         </p>
-        <div id="estado-conexion"></div>
-
-        <details id="config-correo">
-          <summary>Configuración de la conexión (IDs de cliente)</summary>
-          <p class="texto-suave" style="font-size:13px">
-            Se obtienen una sola vez registrando la aplicación en Google Cloud y en Microsoft Azure (ver README).
-            Redirección para Microsoft: <code id="uri-ms"></code>
-          </p>
-          <div class="rejilla">
-            <div class="campo ancho"><label for="a-google-id">ID de cliente de Google</label>
-              <input id="a-google-id" data-correo="googleClientId" value="${U.esc(a.correo.googleClientId)}" placeholder="xxxxxxxx.apps.googleusercontent.com"></div>
-            <div class="campo ancho"><label for="a-ms-id">ID de aplicación de Microsoft</label>
-              <input id="a-ms-id" data-correo="microsoftClientId" value="${U.esc(a.correo.microsoftClientId)}" placeholder="00000000-0000-0000-0000-000000000000"></div>
-          </div>
-        </details>
-
-        <h2 style="margin-top:20px">Plantilla del mensaje</h2>
         <div class="rejilla">
           <div class="campo ancho"><label for="a-asunto">Asunto</label>
             <input id="a-asunto" data-correo="asunto" value="${U.esc(a.correo.asunto || Correo.PLANTILLA_ASUNTO)}"></div>
@@ -129,52 +111,9 @@ const Ajustes = (() => {
       U.aviso("Ajustes guardados");
     });
 
-    // ---------- Correo ----------
-    $("#uri-ms").textContent = Correo.redirigirMicrosoft();
+    // ---------- Plantilla de correo ----------
     cont.querySelectorAll("[data-correo]").forEach((inp) =>
-      inp.addEventListener("input", () => { a.correo[inp.dataset.correo] = inp.value; sinGuardar(); pintarConexion(); }));
-
-    const pintarConexion = () => {
-      const c = Correo.conexion();
-      const caja = $("#estado-conexion");
-      if (c) {
-        caja.innerHTML = `
-          <div class="estado-conexion">
-            <span class="punto on"></span>
-            <span>Conectado: <strong>${U.esc(c.email || "cuenta")}</strong> (${Correo.nombreProveedor(c.proveedor)})</span>
-            <button class="boton pequeno" id="desconectar">Desconectar</button>
-          </div>`;
-        $("#desconectar").addEventListener("click", () => { Correo.desconectar(); pintarConexion(); U.aviso("Cuenta desconectada"); });
-        return;
-      }
-      const local = Correo.puedeConectar();
-      const g = a.correo.googleClientId.trim(), m = a.correo.microsoftClientId.trim();
-      let nota = "";
-      if (!local) nota = "Para conectar tu correo abre la aplicación desde <strong>localhost</strong> (no con doble clic). Consulta el README.";
-      else if (!g && !m) nota = "Primero rellena los IDs de cliente en «Configuración de la conexión».";
-      caja.innerHTML = `
-        <div class="estado-conexion">
-          <span class="punto"></span><span>Ninguna cuenta conectada</span>
-          <button class="boton pequeno" id="conectar-google" ${!local || !g ? "disabled" : ""}>Conectar Gmail</button>
-          <button class="boton pequeno" id="conectar-ms" ${!local || !m ? "disabled" : ""}>Conectar Outlook / Hotmail</button>
-        </div>
-        ${nota ? `<p class="texto-suave" style="font-size:13px;margin-top:-6px">${nota}</p>` : ""}`;
-      if (local && g) Correo.cargarGoogle().catch(() => {}); // precarga para que la ventana de Google no se bloquee
-      const conectar = (proveedor, id) => async () => {
-        try {
-          await Correo.conectar(proveedor, id);
-          await DB.poner("ajustes", a); // guarda los IDs usados
-          pintarConexion();
-          U.aviso("Cuenta conectada");
-        } catch (e) {
-          alert(`No se pudo conectar: ${e.message}`);
-        }
-      };
-      $("#conectar-google").addEventListener("click", conectar("google", g));
-      $("#conectar-ms").addEventListener("click", conectar("microsoft", m));
-    };
-    pintarConexion();
-    if (!a.correo.googleClientId && !a.correo.microsoftClientId) $("#config-correo").open = true;
+      inp.addEventListener("input", () => { a.correo[inp.dataset.correo] = inp.value; sinGuardar(); }));
 
     $("#exportar").addEventListener("click", () => DB.exportarCopia());
     $("#importar").addEventListener("click", () => $("#archivo-copia").click());

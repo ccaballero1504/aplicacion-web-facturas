@@ -10,7 +10,7 @@ VERSION="$(date +%Y.%m.%d)"
 # Copia la aplicación dentro del lanzador para incrustarla en el ejecutable.
 rm -rf app
 mkdir -p app
-cp -r "$RAIZ/index.html" "$RAIZ/auth-microsoft.html" "$RAIZ/css" "$RAIZ/js" "$RAIZ/vendor" app/
+cp -r "$RAIZ/index.html" "$RAIZ/css" "$RAIZ/js" "$RAIZ/vendor" app/
 
 mkdir -p "$RAIZ/dist"
 compilar() { # GOOS GOARCH nombre

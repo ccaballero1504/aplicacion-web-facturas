@@ -54,6 +54,8 @@ const U = (() => {
   const p2 = (n) => String(n).padStart(2, "0");
   const aISO = (f) => `${f.getFullYear()}-${p2(f.getMonth() + 1)}-${p2(f.getDate())}`;
   const hoyISO = () => aISO(new Date());
+  /** Fecha local (dd/mm/aaaa) de una marca de tiempo ISO, p. ej. la fecha de creación. */
+  const fechaLocal = (iso) => (iso ? new Date(iso).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }) : "");
   const sumarDias = (iso, dias) => {
     const [y, m, d] = iso.split("-").map(Number);
     return aISO(new Date(y, m - 1, d + dias));
@@ -89,7 +91,7 @@ const U = (() => {
 
   return {
     TIPOS_IVA, TIPOS_IRPF, CAMPOS_FISCALES, redondear, baseLinea, calcularTotales, codigo, nombreDocumento,
-    siguienteNumero, euros, fechaES, hoyISO, sumarDias, esc, datosFiscalesVacios, aviso,
+    siguienteNumero, euros, fechaES, fechaLocal, hoyISO, sumarDias, esc, datosFiscalesVacios, aviso,
   };
 })();
 

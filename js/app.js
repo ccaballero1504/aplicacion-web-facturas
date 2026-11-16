@@ -15,6 +15,7 @@
         const tipo = TIPOS[seccion];
         if (accion === "nueva") return await Documentos.editor(tipo, null, cont);
         if (accion === "editar" && id) return await Documentos.editor(tipo, id, cont);
+        if (accion === "duplicar" && id) return await Documentos.editor(tipo, null, cont, id);
         if (accion === "ver" && id) return await Documentos.vista(tipo, id, cont);
         return await Documentos.lista(tipo, cont);
       }
