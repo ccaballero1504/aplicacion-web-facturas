@@ -223,17 +223,28 @@ const PDF = (() => {
 
   const nombreArchivo = (doc) => `${U.nombreDocumento(doc).replace(/[\\/:*?"<>|]+/g, "-")}.pdf`;
 
-  async function descargar(doc, emisor) {
-    const bytes = await generar(doc, emisor);
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  function guardarBlob(blob, nombre) {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = nombreArchivo(doc);
+    a.download = nombre;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
-  return { generar, descargar, nombreArchivo };
+  async function descargar(doc, emisor) {
+    guardarBlob(new Blob([await generar(doc, emisor)], { type: "application/pdf" }), nombreArchivo(doc));
+  }
+
+  /** Descarga varios documentos: uno solo como PDF; varios, juntos en un ZIP con un PDF por documento. */
+  async function descargarVarios(docs, emisor, nombreZip) {
+    if (docs.length === 1) return descargar(docs[0], emisor);
+    const archivos = [];
+    for (const d of docs) archivos.push({ nombre: nombreArchivo(d), datos: await generar(d, emisor) });
+    guardarBlob(Zip.crear(archivos), nombreZip);
+  }
+
+  return { generar, descargar, descargarVarios, nombreArchivo };
 })();

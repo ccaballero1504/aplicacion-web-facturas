@@ -3,29 +3,43 @@
   const cont = document.getElementById("contenido");
   const TIPOS = { facturas: "factura", presupuestos: "presupuesto" };
 
+  let turno = 0;
+
   async function enrutar() {
+    // Cada navegación pinta en un contenedor nuevo y solo lo muestra si sigue siendo la última:
+    // así una pantalla lenta nunca sobrescribe a la que el usuario acaba de abrir.
+    const mio = ++turno;
+    const destino = document.createElement("div");
     const [seccion = "facturas", accion, idTexto] = location.hash.replace(/^#\/?/, "").split("/");
     const id = Number(idTexto) || null;
 
     document.querySelectorAll("#menu a").forEach((a) => a.classList.toggle("activo", a.dataset.seccion === seccion));
-    window.scrollTo(0, 0);
 
     try {
       if (TIPOS[seccion]) {
         const tipo = TIPOS[seccion];
-        if (accion === "nueva") return await Documentos.editor(tipo, null, cont);
-        if (accion === "editar" && id) return await Documentos.editor(tipo, id, cont);
-        if (accion === "duplicar" && id) return await Documentos.editor(tipo, null, cont, id);
-        if (accion === "ver" && id) return await Documentos.vista(tipo, id, cont);
-        return await Documentos.lista(tipo, cont);
+        if (accion === "nueva") await Documentos.editor(tipo, null, destino);
+        else if (accion === "editar" && id) await Documentos.editor(tipo, id, destino);
+        else if (accion === "duplicar" && id) await Documentos.editor(tipo, null, destino, id);
+        else if (accion === "ver" && id) await Documentos.vista(tipo, id, destino);
+        else await Documentos.lista(tipo, destino);
+      } else if (seccion === "clientes") {
+        await Clientes.pagina(destino);
+      } else if (seccion === "ajustes") {
+        await Ajustes.pagina(destino);
+      } else {
+        location.hash = "#/facturas";
+        return;
       }
-      if (seccion === "clientes") return await Clientes.pagina(cont);
-      if (seccion === "ajustes") return await Ajustes.pagina(cont);
-      location.hash = "#/facturas";
     } catch (err) {
       console.error(err);
-      cont.innerHTML = `<div class="panel vacio">Ha ocurrido un error: ${U.esc(err.message)}</div>`;
+      destino.innerHTML = `<div class="panel vacio">Ha ocurrido un error: ${U.esc(err.message)}</div>`;
     }
+    if (mio !== turno) return;
+    cont.replaceChildren(destino);
+    window.scrollTo(0, 0);
+    const foco = destino.querySelector("[data-foco]");
+    if (foco) foco.focus();
   }
 
   if (!window.indexedDB) {

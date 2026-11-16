@@ -65,7 +65,8 @@ Los botones *Abrir en Gmail*, *Abrir en Outlook / Hotmail* y *App de correo* abr
 - Columnas **Fecha** (fecha de la factura) y **Creada** (día en que se creó en la app, automática).
 - Filtros por **año** y **trimestre** (1.º ene–mar, 2.º abr–jun, 3.º jul–sep, 4.º oct–dic), además de estado y búsqueda. Encima de la tabla se muestra la suma de base imponible, IVA, retención y total de lo filtrado (útil para las declaraciones trimestrales).
 - **Duplicar** (a la izquierda de cada fila): abre el editor con una copia como documento nuevo, con fecha de hoy y número nuevo.
-- **Imprimir** y **Enviar por email** (a la derecha de cada fila). *Imprimir* abre directamente el diálogo de la impresora con la factura en A4, sin salir del listado. También está en la vista de cada documento.
+- **Imprimir**, **Descargar** y **Enviar por email** (a la derecha de cada fila). *Imprimir* abre directamente el diálogo de la impresora con la factura en A4, sin salir del listado. También están en la vista de cada documento.
+- **Selección múltiple:** casilla a la izquierda de cada fila y otra en la cabecera para marcar todas las visibles (por ejemplo, todas las del 1.er trimestre). Con *Mayús + clic* se marca un rango. En la cabecera, **Imprimir (n)** manda todas las seleccionadas a la impresora en un solo trabajo (cada una en su página) y **Descargar (n)** las descarga juntas en un ZIP con un PDF por factura (p. ej. `Facturas 2026 1T.zip`; si solo hay una, descarga el PDF). Al cambiar los filtros se desmarca lo que deja de verse.
 
 ## Importante sobre los datos
 
@@ -77,7 +78,8 @@ Los datos viven solo en el navegador donde se crean. Si se borran los datos de n
 index.html          Página única con el menú
 css/estilos.css     Estilos (incluye los de impresión/PDF)
 js/utilidades.js    Cálculos de totales, numeración y formato
-js/pdf.js           Generación del PDF
+js/pdf.js           Generación del PDF y descarga de varios
+js/zip.js           Creación de archivos ZIP
 js/correo.js        Ventana de envío por email (abre Gmail, Outlook o la app de correo)
 js/db.js            Base de datos local (IndexedDB) y copia de seguridad
 js/documentos.js    Facturas y presupuestos: lista, editor y vista/PDF

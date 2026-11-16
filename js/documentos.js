@@ -34,12 +34,17 @@ const Documentos = (() => {
   async function lista(tipo, cont) {
     const t = TEXTOS[tipo];
     const docs = await DB.porIndice("documentos", "tipo", tipo);
+    const porId = new Map(docs.map((d) => [d.id, d]));
     const anios = [...new Set([new Date().getFullYear(), ...docs.map((d) => Number(d.fecha.slice(0, 4)))])].sort((a, b) => b - a);
 
     // Año, trimestre y estado se recuerdan al volver al listado (durante la sesión); la búsqueda de texto no.
     const claveFiltros = `filtros-${tipo}`;
     let filtros = {};
     try { filtros = JSON.parse(sessionStorage.getItem(claveFiltros)) || {}; } catch (_) {}
+
+    const seleccion = new Set(); // ids seleccionados (solo de los visibles)
+    let visibles = [];
+    let ultimoMarcado = null; // para seleccionar un rango con Mayús
 
     cont.innerHTML = `
       <div class="cabecera">
@@ -57,6 +62,39 @@ const Documentos = (() => {
       </div>`;
 
     const $ = (sel) => cont.querySelector(sel);
+    const plural = (n) => (n === 1 ? t.singular.toLowerCase() : t.plural.toLowerCase());
+
+    /** Documentos seleccionados, en orden cronológico (así salen impresos y en el ZIP). */
+    const seleccionados = () =>
+      [...seleccion].map((id) => porId.get(id)).filter(Boolean)
+        .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.anio - b.anio || a.numero - b.numero);
+
+    const nombreZip = () => {
+      const partes = [t.plural];
+      if (filtros.anio) partes.push(filtros.anio);
+      if (filtros.trimestre) partes.push(`${filtros.trimestre}T`);
+      if (!filtros.anio && !filtros.trimestre) partes.push(U.hoyISO());
+      return `${partes.join(" ")}.zip`;
+    };
+
+    /** Actualiza casillas, botones de la cabecera y contador sin volver a pintar la tabla. */
+    const actualizarSeleccion = () => {
+      const n = seleccion.size;
+      const todas = $("#sel-todas");
+      if (!todas) return;
+      todas.checked = n > 0 && n === visibles.length;
+      todas.indeterminate = n > 0 && n < visibles.length;
+      cont.querySelectorAll("[data-sel]").forEach((c) => {
+        c.checked = seleccion.has(Number(c.dataset.sel));
+        c.closest("tr").classList.toggle("seleccionada", c.checked);
+      });
+      for (const b of cont.querySelectorAll("[data-lote]")) {
+        b.disabled = n === 0;
+        b.querySelector(".cuenta").textContent = n ? ` (${n})` : "";
+      }
+      $("#contador").textContent = `${visibles.length} ${plural(visibles.length)}` + (n ? ` · ${n} ${n === 1 ? "seleccionada" : "seleccionadas"}` : "");
+      if (tipo === "presupuesto") $("#contador").textContent = $("#contador").textContent.replace("seleccionada", "seleccionado");
+    };
 
     const pintar = () => {
       filtros = {
@@ -64,20 +102,24 @@ const Documentos = (() => {
       };
       try { sessionStorage.setItem(claveFiltros, JSON.stringify({ ...filtros, q: "" })); } catch (_) {}
       const q = filtros.q.trim().toLowerCase();
-      const filtrados = docs
+      visibles = docs
         .filter((d) => !filtros.estado || d.estado === filtros.estado)
         .filter((d) => !filtros.anio || d.fecha.slice(0, 4) === filtros.anio)
         .filter((d) => !filtros.trimestre || trimestreDe(d.fecha) === filtros.trimestre)
         .filter((d) => !q || `${U.nombreDocumento(d)} ${d.cliente.nombre} ${d.cliente.nif}`.toLowerCase().includes(q))
         .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.anio - a.anio || b.numero - a.numero);
+      // Lo que deja de verse al filtrar se deselecciona, para no imprimir ni descargar nada oculto.
+      const idsVisibles = new Set(visibles.map((d) => d.id));
+      for (const id of [...seleccion]) if (!idsVisibles.has(id)) seleccion.delete(id);
+      ultimoMarcado = null;
       const res = $("#resultados");
 
-      if (!filtrados.length) {
+      if (!visibles.length) {
         res.innerHTML = `<div class="vacio">${docs.length ? "No hay resultados con estos filtros." : `Todavía no hay ${t.plural.toLowerCase()}.`}</div>`;
         return;
       }
 
-      const totales = filtrados.map((d) => U.calcularTotales(d.lineas, d.irpf));
+      const totales = visibles.map((d) => U.calcularTotales(d.lineas, d.irpf));
       const suma = (k) => U.redondear(totales.reduce((s, x) => s + x[k], 0));
       res.innerHTML = `
         <div class="resumen">
@@ -86,50 +128,108 @@ const Documentos = (() => {
           <div><span>Retención IRPF</span><strong>${U.euros(suma("irpf"))}</strong></div>
           <div><span>Total</span><strong>${U.euros(suma("total"))}</strong></div>
         </div>
-        <table class="tabla">
+        <div class="tabla-desplazable"><table class="tabla tabla-listado">
           <thead><tr>
-            <th></th><th>${t.singular}</th><th>Fecha</th><th>Creada</th><th>Cliente</th><th>Estado</th><th class="num">Total</th><th></th>
+            <th class="col-casilla"><label class="casilla" title="Seleccionar todas"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todas"></label></th>
+            <th></th><th>${t.singular}</th><th>Fecha</th><th>Creada</th><th>Cliente</th><th>Estado</th><th class="num">Total</th>
+            <th class="botones-fila">
+              <button class="boton pequeno" data-lote="imprimir" disabled title="Imprimir las seleccionadas">Imprimir<span class="cuenta"></span></button>
+              <button class="boton pequeno" data-lote="descargar" disabled title="Descargar las seleccionadas">Descargar<span class="cuenta"></span></button>
+            </th>
           </tr></thead>
           <tbody>
-            ${filtrados.map((d, i) => `
+            ${visibles.map((d, i) => `
               <tr class="clic" data-id="${d.id}">
+                <td class="col-casilla"><label class="casilla"><input type="checkbox" data-sel="${d.id}" aria-label="Seleccionar ${U.esc(U.nombreDocumento(d))}"></label></td>
                 <td><button class="boton pequeno" data-duplicar="${d.id}" title="Crear una ${t.singular.toLowerCase()} nueva a partir de esta">Duplicar</button></td>
-                <td><strong>${U.esc(U.nombreDocumento(d))}</strong></td>
+                <td class="col-texto"><strong>${d.titulo.trim() ? `${U.esc(d.titulo.trim())} ` : ""}<span class="sin-corte">${U.codigo(d.tipo, d.anio, d.numero)}</span></strong></td>
                 <td>${U.fechaES(d.fecha)}</td>
                 <td>${U.fechaLocal(d.creado)}</td>
-                <td>${d.cliente.nombre ? U.esc(d.cliente.nombre) : '<span class="texto-suave">Sin cliente</span>'}</td>
+                <td class="col-texto">${d.cliente.nombre ? U.esc(d.cliente.nombre) : '<span class="texto-suave">Sin cliente</span>'}</td>
                 <td>${etiqueta(tipo, d.estado)}</td>
                 <td class="num">${U.euros(totales[i].total)}</td>
-                <td class="num botones-fila">
+                <td class="botones-fila">
                   <button class="boton pequeno" data-imprimir="${d.id}">Imprimir</button>
+                  <button class="boton pequeno" data-descargar="${d.id}">Descargar</button>
                   <button class="boton pequeno" data-enviar="${d.id}">Enviar por email</button>
                 </td>
               </tr>`).join("")}
           </tbody>
           <tfoot><tr>
-            <td colspan="8" class="texto-suave" style="padding-top:12px">${filtrados.length} ${filtrados.length === 1 ? t.singular.toLowerCase() : t.plural.toLowerCase()}</td>
+            <td colspan="9" class="texto-suave" style="padding-top:12px" id="contador"></td>
           </tr></tfoot>
-        </table>`;
+        </table></div>`;
+      actualizarSeleccion();
     };
 
+    /** Ejecuta una acción mostrando el botón ocupado y avisando si falla. */
+    const ocupado = async (boton, textoError, accion) => {
+      const html = boton.innerHTML;
+      boton.disabled = true;
+      try {
+        await accion();
+      } catch (err) {
+        alert(`${textoError}: ${err.message}`);
+      } finally {
+        boton.innerHTML = html;
+        boton.disabled = false;
+        actualizarSeleccion();
+      }
+    };
+
+    $("#resultados").addEventListener("change", (e) => {
+      if (e.target.id === "sel-todas") {
+        if (e.target.checked) visibles.forEach((d) => seleccion.add(d.id));
+        else seleccion.clear();
+        actualizarSeleccion();
+      }
+    });
+
     $("#resultados").addEventListener("click", async (e) => {
+      const casilla = e.target.closest("[data-sel]");
+      if (casilla) {
+        const id = Number(casilla.dataset.sel);
+        const indice = visibles.findIndex((d) => d.id === id);
+        if (e.shiftKey && ultimoMarcado !== null) {
+          // Mayús + clic: marca o desmarca todo el rango.
+          const [desde, hasta] = [Math.min(ultimoMarcado, indice), Math.max(ultimoMarcado, indice)];
+          for (let i = desde; i <= hasta; i++) casilla.checked ? seleccion.add(visibles[i].id) : seleccion.delete(visibles[i].id);
+        } else {
+          casilla.checked ? seleccion.add(id) : seleccion.delete(id);
+        }
+        ultimoMarcado = indice;
+        actualizarSeleccion();
+        return;
+      }
+      if (e.target.closest(".casilla")) return; // clic en el hueco de la casilla: no abrir la factura
+
+      const lote = e.target.closest("[data-lote]");
       const dup = e.target.closest("[data-duplicar]");
       const env = e.target.closest("[data-enviar]");
       const imp = e.target.closest("[data-imprimir]");
+      const des = e.target.closest("[data-descargar]");
       const fila = e.target.closest("tr[data-id]");
-      if (dup) {
+
+      if (lote) {
+        const elegidos = seleccionados();
+        if (!elegidos.length) return;
+        const emisor = await DB.obtenerAjustes();
+        if (lote.dataset.lote === "imprimir") {
+          await ocupado(lote, "No se pudo imprimir", () => imprimir(elegidos, emisor));
+        } else {
+          await ocupado(lote, "No se pudo descargar", async () => {
+            lote.textContent = "Preparando…";
+            await PDF.descargarVarios(elegidos, emisor, nombreZip());
+          });
+        }
+      } else if (dup) {
         location.hash = `${t.ruta}/duplicar/${dup.dataset.duplicar}`;
       } else if (imp) {
-        imp.disabled = true;
-        try {
-          const id = Number(imp.dataset.imprimir);
-          const [doc, emisor] = await Promise.all([DB.obtener("documentos", id), DB.obtenerAjustes()]);
-          await imprimir(doc, emisor);
-        } catch (err) {
-          alert(`No se pudo imprimir: ${err.message}`);
-        } finally {
-          imp.disabled = false;
-        }
+        const doc = porId.get(Number(imp.dataset.imprimir));
+        await ocupado(imp, "No se pudo imprimir", async () => imprimir([doc], await DB.obtenerAjustes()));
+      } else if (des) {
+        const doc = porId.get(Number(des.dataset.descargar));
+        await ocupado(des, "No se pudo descargar", async () => PDF.descargar(doc, await DB.obtenerAjustes()));
       } else if (env) {
         const id = Number(env.dataset.enviar);
         const [doc, emisor] = await Promise.all([DB.obtener("documentos", id), DB.obtenerAjustes()]);
@@ -433,10 +533,12 @@ const Documentos = (() => {
   }
 
   /**
-   * Imprime el documento sin salir de la página: lo pinta en un marco oculto con los estilos
-   * de impresión (A4) y abre el diálogo de la impresora. Funciona en cualquier navegador.
+   * Imprime uno o varios documentos sin salir de la página: los pinta en un marco oculto con los
+   * estilos de impresión (A4, cada documento en su página) y abre el diálogo de la impresora.
    */
-  function imprimir(doc, emisor) {
+  function imprimir(documentos, emisor) {
+    const lista = [].concat(documentos);
+    const titulo = lista.length === 1 ? U.nombreDocumento(lista[0]) : `${TEXTOS[lista[0].tipo].plural} (${lista.length})`;
     return new Promise((resolver) => {
       document.getElementById("marco-impresion")?.remove();
       const marco = document.createElement("iframe");
@@ -446,10 +548,10 @@ const Documentos = (() => {
       marco.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
       const hojaEstilos = new URL("css/estilos.css", location.href.split("#")[0]).href;
       marco.srcdoc = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-        <title>${U.esc(U.nombreDocumento(doc))}</title>
+        <title>${U.esc(titulo)}</title>
         <link rel="stylesheet" href="${U.esc(hojaEstilos)}">
-        <style>body{background:#fff}.hoja{border:none;padding:0;max-width:none}</style>
-        </head><body>${htmlHoja(doc, emisor)}</body></html>`;
+        <style>body{background:#fff}.hoja{border:none;padding:0;max-width:none}.hoja+.hoja{break-before:page;page-break-before:always}</style>
+        </head><body>${lista.map((d) => htmlHoja(d, emisor)).join("")}</body></html>`;
       marco.onload = () => {
         const ventana = marco.contentWindow;
         const imgs = [...ventana.document.images].filter((i) => !i.complete);
@@ -512,7 +614,7 @@ const Documentos = (() => {
     });
 
     $("#imprimir").addEventListener("click", async () => {
-      try { await imprimir(doc, emisor); } catch (e) { alert(`No se pudo imprimir: ${e.message}`); }
+      try { await imprimir([doc], emisor); } catch (e) { alert(`No se pudo imprimir: ${e.message}`); }
     });
 
     $("#enviar").addEventListener("click", () =>

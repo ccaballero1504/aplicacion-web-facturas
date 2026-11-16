@@ -40,7 +40,7 @@ body {
 .nav a.activo { background: var(--acento); color: #fff; }
 .nota-local { margin-top: auto; font-size: 12px; color: #8a93a8; padding: 0 10px; line-height: 1.4; }
 
-.contenido { flex: 1; padding: 28px 32px; max-width: 1200px; }
+.contenido { flex: 1; min-width: 0; padding: 28px 32px; max-width: 1400px; }
 
 h1 { font-size: 24px; margin: 0; }
 h2 { font-size: 17px; margin: 0 0 12px; }
@@ -167,3 +167,18 @@ code { background: #eef0f4; padding: 1px 5px; border-radius: 4px; font-size: 13p
 @media (max-width: 760px) { .resumen { grid-template-columns: 1fr 1fr; } }
 .botones-fila { white-space: nowrap; }
 .botones-fila .boton + .boton { margin-left: 6px; }
+
+/* ---------- Selección múltiple ---------- */
+.col-casilla { width: 1%; padding-left: 4px !important; padding-right: 0 !important; }
+.casilla { display: flex; align-items: center; justify-content: center; padding: 6px; cursor: pointer; }
+.casilla input { width: 17px; height: 17px; margin: 0; cursor: pointer; accent-color: var(--acento); }
+.tabla tbody tr.seleccionada { background: #eef2fe; }
+.tabla tbody tr.seleccionada:hover { background: #e4eafd; }
+.tabla thead .botones-fila .boton { text-transform: none; letter-spacing: 0; font-weight: 600; }
+.tabla-desplazable { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.tabla-listado th, .tabla-listado td { white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+.tabla-listado td.col-texto { white-space: normal; min-width: 110px; }
+.sin-corte { white-space: nowrap; }
+.tabla-listado .boton.pequeno { padding: 4px 8px; font-size: 12.5px; }
+.tabla-listado .botones-fila { text-align: left; }
+.tabla-listado thead .botones-fila .boton { min-width: 0; }
