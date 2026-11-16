@@ -33,8 +33,20 @@ const U = (() => {
     return tipo === "factura" ? `${anio}-${n}` : `P-${anio}-${n}`;
   }
 
-  /** Texto del usuario + código, p. ej. "Factura para Paco 2026-0001". */
+  /**
+   * Totales de cualquier documento. Las facturas subidas en PDF no tienen líneas:
+   * usan los importes que indicó el usuario (base, IVA y retención en euros).
+   */
+  function totalesDocumento(d) {
+    if (!d.subida) return calcularTotales(d.lineas, d.irpf);
+    const i = d.importes || {};
+    const base = redondear(Number(i.base) || 0), iva = redondear(Number(i.iva) || 0), irpf = redondear(Number(i.irpf) || 0);
+    return { base, ivas: [], totalIva: iva, irpf, total: redondear(base + iva - irpf) };
+  }
+
+  /** Texto del usuario + código, p. ej. "Factura para Paco 2026-0001". Las subidas usan su propio nombre. */
   function nombreDocumento(d) {
+    if (d.subida) return (d.titulo || "").trim() || "Factura subida";
     const c = codigo(d.tipo, d.anio, d.numero);
     const t = (d.titulo || "").trim();
     return t ? `${t} ${c}` : c;
@@ -90,7 +102,7 @@ const U = (() => {
   }
 
   return {
-    TIPOS_IVA, TIPOS_IRPF, CAMPOS_FISCALES, redondear, baseLinea, calcularTotales, codigo, nombreDocumento,
+    TIPOS_IVA, TIPOS_IRPF, CAMPOS_FISCALES, redondear, baseLinea, calcularTotales, totalesDocumento, codigo, nombreDocumento,
     siguienteNumero, euros, fechaES, fechaLocal, hoyISO, sumarDias, esc, datosFiscalesVacios, aviso,
   };
 })();

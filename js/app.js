@@ -19,6 +19,7 @@
       if (TIPOS[seccion]) {
         const tipo = TIPOS[seccion];
         if (accion === "nueva") await Documentos.editor(tipo, null, destino);
+        else if (accion === "subir" && tipo === "factura") await Documentos.editorSubida(null, destino);
         else if (accion === "editar" && id) await Documentos.editor(tipo, id, destino);
         else if (accion === "duplicar" && id) await Documentos.editor(tipo, null, destino, id);
         else if (accion === "ver" && id) await Documentos.vista(tipo, id, destino);

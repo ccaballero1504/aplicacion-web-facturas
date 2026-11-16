@@ -20,7 +20,7 @@ const Correo = (() => {
       documento: doc.tipo === "factura" ? "Factura" : "Presupuesto",
       numero: U.nombreDocumento(doc),
       cliente: doc.cliente.nombre || "",
-      total: U.euros(U.calcularTotales(doc.lineas, doc.irpf).total),
+      total: U.euros(U.totalesDocumento(doc).total),
       fecha: U.fechaES(doc.fecha),
       vencimiento: U.fechaES(doc.vencimiento),
       empresa: emisor.nombre || "",

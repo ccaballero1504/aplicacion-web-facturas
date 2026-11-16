@@ -96,7 +96,9 @@ const DB = (() => {
       const anio = Number(doc.fecha.slice(0, 4));
       const anterior = doc.id ? await peticion(documentos.get(doc.id)) : null;
       let numero = doc.numero;
-      if (!anterior || anterior.anio !== anio) {
+      if (doc.subida) {
+        numero = 0; // las facturas subidas tienen su propia numeración y no ocupan números de la app
+      } else if (!anterior || anterior.anio !== anio) {
         numero = U.siguienteNumero(await peticion(documentos.index("tipoAnio").getAll([doc.tipo, anio])));
       }
       const ahora = new Date().toISOString();
@@ -152,10 +154,28 @@ const DB = (() => {
   }
 
   // ---------- Copia de seguridad ----------
+  // Los PDF subidos se guardan como Blob; en la copia (JSON) van en base64.
+  async function archivoATexto(d) {
+    if (!d.archivo || !(d.archivo.datos instanceof Blob)) return d;
+    const bytes = new Uint8Array(await d.archivo.datos.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { ...d, archivo: { ...d.archivo, datos: undefined, base64: btoa(bin) } };
+  }
+  function textoAArchivo(d) {
+    if (!d.archivo || typeof d.archivo.base64 !== "string") return d;
+    const bin = atob(d.archivo.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const { base64, ...resto } = d.archivo;
+    return { ...d, archivo: { ...resto, datos: new Blob([bytes], { type: resto.tipo || "application/pdf" }) } };
+  }
+
   async function exportarCopia() {
     const datos = {
       app: NOMBRE, version: 1, exportado: new Date().toISOString(),
-      clientes: await todos("clientes"), documentos: await todos("documentos"), ajustes: await todos("ajustes"),
+      clientes: await todos("clientes"), documentos: await Promise.all((await todos("documentos")).map(archivoATexto)),
+      ajustes: await todos("ajustes"),
     };
     const url = URL.createObjectURL(new Blob([JSON.stringify(datos, null, 2)], { type: "application/json" }));
     const a = document.createElement("a");
@@ -174,7 +194,7 @@ const DB = (() => {
     await transaccion(["clientes", "documentos", "ajustes"], "readwrite", async (s) => {
       for (const n of ["clientes", "documentos", "ajustes"]) {
         await peticion(s[n].clear());
-        for (const obj of datos[n] || []) await peticion(s[n].put(obj));
+        for (const obj of datos[n] || []) await peticion(s[n].put(n === "documentos" ? textoAArchivo(obj) : obj));
       }
     });
   }

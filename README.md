@@ -41,6 +41,12 @@ Si el ejecutable está dentro de la carpeta del proyecto (junto a `index.html` o
 - **Clientes**: se guardan una vez y rellenan las facturas automáticamente.
 - **Ajustes**: datos fiscales del emisor (nombre, NIF, dirección, IBAN, logo), IVA e IRPF por defecto, texto al pie y copia de seguridad (exportar/importar).
 
+### Subir facturas en PDF
+
+En *Facturas*, el botón **Subir factura (PDF)** guarda una factura hecha con otro programa **tal cual**, sin pasarla al formato de la app. Se arrastra el PDF (o se elige) y, opcionalmente, se indican nombre o número, fecha, cliente e importes (base, IVA y retención, con atajos para calcular el 21 %, 15 %…). Esos datos sirven para buscarla, filtrarla por trimestre y sumarla en el resumen.
+
+Las facturas subidas aparecen en el listado con la etiqueta **PDF** y se pueden ver (visor integrado), descargar, imprimir, enviar por email, marcar como pagadas, meter en el ZIP o imprimir junto a otras (se unen en un solo PDF). Siempre se usa el PDF original. No ocupan números de la numeración de la app y no se pueden duplicar. Se incluyen en las copias de seguridad.
+
 ### Numeración
 
 Correlativa por año: facturas `2026-0001`, presupuestos `P-2026-0001`. Opcionalmente se puede añadir un nombre delante, por ejemplo **"Factura para Paco 2026-0001"**.

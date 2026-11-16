@@ -27,6 +27,8 @@ const PDF = (() => {
   }
 
   async function generar(doc, emisor) {
+    // Factura subida: se entrega el PDF original tal cual.
+    if (doc.subida) return new Uint8Array(await doc.archivo.datos.arrayBuffer());
     const pdf = await PDFDocument.create();
     const normal = await pdf.embedFont(StandardFonts.Helvetica);
     const negrita = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -221,7 +223,35 @@ const PDF = (() => {
     return pdf.save();
   }
 
-  const nombreArchivo = (doc) => `${U.nombreDocumento(doc).replace(/[\\/:*?"<>|]+/g, "-")}.pdf`;
+  const nombreArchivo = (doc) => `${U.nombreDocumento(doc).replace(/[\\/:*?"<>|]+/g, "-").replace(/\.pdf$/i, "")}.pdf`;
+
+  /** Une varios documentos (de la app o subidos) en un único PDF. */
+  async function unir(docs, emisor) {
+    const final = await PDFDocument.create();
+    for (const d of docs) {
+      const origen = await PDFDocument.load(await generar(d, emisor), { ignoreEncryption: true });
+      const paginas = await final.copyPages(origen, origen.getPageIndices());
+      paginas.forEach((p) => final.addPage(p));
+    }
+    return final.save();
+  }
+
+  /** Abre el diálogo de impresión con un PDF; si el navegador no puede, lo abre en otra pestaña. */
+  function imprimirBytes(bytes) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    document.getElementById("marco-impresion")?.remove();
+    const marco = document.createElement("iframe");
+    marco.id = "marco-impresion";
+    marco.title = "Impresión";
+    marco.setAttribute("aria-hidden", "true");
+    marco.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+    marco.onload = () => setTimeout(() => {
+      try { marco.contentWindow.focus(); marco.contentWindow.print(); } catch (_) { window.open(url, "_blank"); }
+    }, 400);
+    marco.src = url;
+    document.body.appendChild(marco);
+    setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
+  }
 
   function guardarBlob(blob, nombre) {
     const url = URL.createObjectURL(blob);
@@ -246,5 +276,5 @@ const PDF = (() => {
     guardarBlob(Zip.crear(archivos), nombreZip);
   }
 
-  return { generar, descargar, descargarVarios, nombreArchivo };
+  return { generar, descargar, descargarVarios, nombreArchivo, unir, imprimirBytes };
 })();

@@ -49,7 +49,10 @@ const Documentos = (() => {
     cont.innerHTML = `
       <div class="cabecera">
         <h1>${t.plural}</h1>
-        <a href="${t.ruta}/nueva" class="boton primario">+ ${t.nuevo}</a>
+        <div class="acciones">
+          ${tipo === "factura" ? `<a href="${t.ruta}/subir" class="boton">⬆ Subir factura (PDF)</a>` : ""}
+          <a href="${t.ruta}/nueva" class="boton primario">+ ${t.nuevo}</a>
+        </div>
       </div>
       <div class="panel">
         <div class="filtros">
@@ -119,7 +122,7 @@ const Documentos = (() => {
         return;
       }
 
-      const totales = visibles.map((d) => U.calcularTotales(d.lineas, d.irpf));
+      const totales = visibles.map((d) => U.totalesDocumento(d));
       const suma = (k) => U.redondear(totales.reduce((s, x) => s + x[k], 0));
       res.innerHTML = `
         <div class="resumen">
@@ -141,8 +144,12 @@ const Documentos = (() => {
             ${visibles.map((d, i) => `
               <tr class="clic" data-id="${d.id}">
                 <td class="col-casilla"><label class="casilla"><input type="checkbox" data-sel="${d.id}" aria-label="Seleccionar ${U.esc(U.nombreDocumento(d))}"></label></td>
-                <td><button class="boton pequeno" data-duplicar="${d.id}" title="Crear una ${t.singular.toLowerCase()} nueva a partir de esta">Duplicar</button></td>
-                <td class="col-texto"><strong>${d.titulo.trim() ? `${U.esc(d.titulo.trim())} ` : ""}<span class="sin-corte">${U.codigo(d.tipo, d.anio, d.numero)}</span></strong></td>
+                <td>${d.subida
+                  ? `<button class="boton pequeno" disabled title="Las facturas subidas en PDF no se pueden duplicar">Duplicar</button>`
+                  : `<button class="boton pequeno" data-duplicar="${d.id}" title="Crear una ${t.singular.toLowerCase()} nueva a partir de esta">Duplicar</button>`}</td>
+                <td class="col-texto"><strong>${d.subida
+                  ? U.esc(U.nombreDocumento(d))
+                  : `${d.titulo.trim() ? `${U.esc(d.titulo.trim())} ` : ""}<span class="sin-corte">${U.codigo(d.tipo, d.anio, d.numero)}</span>`}</strong>${d.subida ? ' <span class="etiqueta pdf" title="Factura subida en PDF">PDF</span>' : ""}</td>
                 <td>${U.fechaES(d.fecha)}</td>
                 <td>${U.fechaLocal(d.creado)}</td>
                 <td class="col-texto">${d.cliente.nombre ? U.esc(d.cliente.nombre) : '<span class="texto-suave">Sin cliente</span>'}</td>
@@ -255,6 +262,7 @@ const Documentos = (() => {
     if (id) {
       doc = await DB.obtener("documentos", id);
       if (!doc || doc.tipo !== tipo) return noEncontrado(tipo, cont);
+      if (doc.subida) return editorSubida(id, cont);
     } else if (duplicarDe) {
       // Copia el contenido de otro documento, pero como uno nuevo: fecha de hoy, número nuevo, sin envíos.
       const origen = await DB.obtener("documentos", duplicarDe);
@@ -536,8 +544,10 @@ const Documentos = (() => {
    * Imprime uno o varios documentos sin salir de la página: los pinta en un marco oculto con los
    * estilos de impresión (A4, cada documento en su página) y abre el diálogo de la impresora.
    */
-  function imprimir(documentos, emisor) {
+  async function imprimir(documentos, emisor) {
     const lista = [].concat(documentos);
+    // Los PDF subidos no se pueden pintar como HTML: se unen todos en un PDF y se imprime ese.
+    if (lista.some((d) => d.subida)) return PDF.imprimirBytes(await PDF.unir(lista, emisor));
     const titulo = lista.length === 1 ? U.nombreDocumento(lista[0]) : `${TEXTOS[lista[0].tipo].plural} (${lista.length})`;
     return new Promise((resolver) => {
       document.getElementById("marco-impresion")?.remove();
@@ -569,6 +579,7 @@ const Documentos = (() => {
     const t = TEXTOS[tipo];
     const doc = await DB.obtener("documentos", id);
     if (!doc || doc.tipo !== tipo) return noEncontrado(tipo, cont);
+    if (doc.subida) return vistaSubida(id, cont);
     const emisor = await DB.obtenerAjustes();
     const nombre = U.nombreDocumento(doc);
     const tot = U.calcularTotales(doc.lineas, doc.irpf);
@@ -645,10 +656,226 @@ const Documentos = (() => {
     });
   }
 
+  // =====================================================================
+  // FACTURAS SUBIDAS EN PDF
+  // =====================================================================
+  const MAX_PDF = 20 * 1024 * 1024;
+  const tamano = (b) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1).replace(".", ",")} MB`);
+
+  /** Formulario para subir una factura en PDF (id = null) o editar los datos de una ya subida. */
+  async function editorSubida(id, cont) {
+    const t = TEXTOS.factura;
+    let doc;
+    if (id) {
+      doc = await DB.obtener("documentos", id);
+    } else {
+      const base = await DB.nuevoDocumento("factura");
+      doc = { ...base, subida: true, numero: 0, vencimiento: "", lineas: [], irpf: 0, importes: { base: "", iva: "", irpf: "" }, archivo: null };
+    }
+    doc.importes = doc.importes || { base: "", iva: "", irpf: "" };
+    const clientes = (await DB.todos("clientes")).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    const valor = (n) => (n === "" || n === undefined || n === null ? "" : n);
+
+    cont.innerHTML = `
+      <div class="cabecera">
+        <h1>${id ? "Editar factura subida" : "Subir factura (PDF)"}</h1>
+        <div class="acciones">
+          <a href="${id ? `${t.ruta}/ver/${id}` : t.ruta}" class="boton">Cancelar</a>
+          <button class="boton primario" id="guardar">Guardar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Archivo</h2>
+        <label class="zona-subida" id="zona">
+          <input type="file" id="archivo" accept="application/pdf,.pdf" hidden>
+          <span id="zona-texto"></span>
+        </label>
+      </div>
+
+      <div class="panel">
+        <h2>Datos de la factura</h2>
+        <p class="texto-suave" style="margin-top:-6px">Solo sirven para buscarla, filtrarla por trimestre y sumar los importes. El PDF se guarda tal cual.</p>
+        <div class="rejilla">
+          <div class="campo ancho"><label for="titulo">Nombre o número de la factura</label>
+            <input id="titulo" value="${U.esc(doc.titulo)}" placeholder="Ej.: F-2026-015 Reforma Paco"></div>
+          <div class="campo"><label for="fecha">Fecha de la factura</label><input type="date" id="fecha" value="${doc.fecha}"></div>
+          <div class="campo"><label for="vencimiento">Vencimiento (opcional)</label><input type="date" id="vencimiento" value="${doc.vencimiento || ""}"></div>
+          <div class="campo"><label for="estado">Estado</label><select id="estado">${opciones(t.estados, doc.estado)}</select></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="cabecera" style="margin-bottom:12px">
+          <h2 style="margin:0">Cliente (opcional)</h2>
+          <select id="cliente-guardado" style="width:260px">
+            <option value="">— Elegir cliente guardado —</option>
+            ${clientes.map((c) => `<option value="${c.id}" ${c.id === doc.clienteId ? "selected" : ""}>${U.esc(c.nombre)}${c.nif ? ` (${U.esc(c.nif)})` : ""}</option>`).join("")}
+          </select>
+        </div>
+        <div class="rejilla">
+          <div class="campo"><label for="cli-nombre">Nombre o razón social</label><input id="cli-nombre" data-cliente="nombre" value="${U.esc(doc.cliente.nombre)}"></div>
+          <div class="campo"><label for="cli-nif">NIF / CIF</label><input id="cli-nif" data-cliente="nif" value="${U.esc(doc.cliente.nif)}"></div>
+          <div class="campo"><label for="cli-email">Email (para enviársela)</label><input id="cli-email" data-cliente="email" value="${U.esc(doc.cliente.email)}"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Importes (opcional)</h2>
+        <div class="rejilla">
+          <div class="campo"><label for="imp-base">Base imponible (€)</label><input id="imp-base" data-importe="base" type="number" step="0.01" value="${valor(doc.importes.base)}"></div>
+          <div class="campo"><label for="imp-iva">IVA (€)</label><input id="imp-iva" data-importe="iva" type="number" step="0.01" value="${valor(doc.importes.iva)}">
+            <small class="texto-suave">Rellenar: <a href="#" data-iva="21">21 %</a> · <a href="#" data-iva="10">10 %</a> · <a href="#" data-iva="4">4 %</a></small></div>
+          <div class="campo"><label for="imp-irpf">Retención IRPF (€)</label><input id="imp-irpf" data-importe="irpf" type="number" step="0.01" value="${valor(doc.importes.irpf)}">
+            <small class="texto-suave">Rellenar: <a href="#" data-irpf="7">7 %</a> · <a href="#" data-irpf="15">15 %</a></small></div>
+          <div class="campo"><label>Total</label><div class="total-subida" id="total"></div></div>
+        </div>
+      </div>`;
+
+    const $ = (sel) => cont.querySelector(sel);
+    let archivo = doc.archivo; // { nombre, tipo, tamano, datos: Blob }
+
+    const pintarArchivo = () => {
+      $("#zona-texto").innerHTML = archivo
+        ? `📄 <strong>${U.esc(archivo.nombre)}</strong> <span class="texto-suave">(${tamano(archivo.tamano || archivo.datos.size)})</span><br><span class="texto-suave">Haz clic o arrastra otro PDF para cambiarlo</span>`
+        : `<strong>Haz clic para elegir el PDF</strong> o arrástralo aquí<br><span class="texto-suave">Máximo 20 MB</span>`;
+      $("#zona").classList.toggle("con-archivo", !!archivo);
+    };
+    const pintarTotal = () => ($("#total").textContent = U.euros(U.totalesDocumento({ subida: true, importes: doc.importes }).total));
+
+    const elegirArchivo = async (f) => {
+      if (!f) return;
+      const esPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+      if (!esPdf) return alert("Solo se pueden subir archivos PDF.");
+      if (f.size > MAX_PDF) return alert("El PDF ocupa más de 20 MB.");
+      const cabecera = new Uint8Array(await f.slice(0, 5).arrayBuffer());
+      if (String.fromCharCode(...cabecera) !== "%PDF-") return alert("El archivo no parece un PDF válido.");
+      archivo = { nombre: f.name, tipo: "application/pdf", tamano: f.size, datos: f };
+      if (!$("#titulo").value.trim()) $("#titulo").value = f.name.replace(/\.pdf$/i, "");
+      pintarArchivo();
+    };
+
+    $("#archivo").addEventListener("change", (e) => elegirArchivo(e.target.files[0]));
+    const zona = $("#zona");
+    zona.addEventListener("dragover", (e) => { e.preventDefault(); zona.classList.add("arrastrando"); });
+    zona.addEventListener("dragleave", () => zona.classList.remove("arrastrando"));
+    zona.addEventListener("drop", (e) => { e.preventDefault(); zona.classList.remove("arrastrando"); elegirArchivo(e.dataTransfer.files[0]); });
+
+    cont.querySelectorAll("[data-cliente]").forEach((inp) => inp.addEventListener("input", () => (doc.cliente[inp.dataset.cliente] = inp.value)));
+    $("#cliente-guardado").addEventListener("change", (e) => {
+      const c = clientes.find((c) => c.id === Number(e.target.value));
+      doc.clienteId = c ? c.id : null;
+      if (c) {
+        for (const [k] of U.CAMPOS_FISCALES) doc.cliente[k] = c[k] || "";
+        ["nombre", "nif", "email"].forEach((k) => ($(`#cli-${k}`).value = doc.cliente[k]));
+      }
+    });
+    cont.querySelectorAll("[data-importe]").forEach((inp) => inp.addEventListener("input", () => {
+      doc.importes[inp.dataset.importe] = inp.value === "" ? "" : Number(inp.value);
+      pintarTotal();
+    }));
+    const rellenarPct = (campo, pct) => {
+      const base = Number(doc.importes.base) || 0;
+      doc.importes[campo] = U.redondear((base * pct) / 100);
+      $(`#imp-${campo}`).value = doc.importes[campo];
+      pintarTotal();
+    };
+    cont.querySelectorAll("[data-iva]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); rellenarPct("iva", Number(a.dataset.iva)); }));
+    cont.querySelectorAll("[data-irpf]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); rellenarPct("irpf", Number(a.dataset.irpf)); }));
+
+    $("#guardar").addEventListener("click", async () => {
+      if (!archivo) return alert("Elige el PDF de la factura.");
+      const fecha = $("#fecha").value;
+      if (!fecha) return alert("Indica la fecha de la factura.");
+      $("#guardar").disabled = true;
+      try {
+        const nuevoId = await DB.guardarDocumento({
+          ...doc,
+          titulo: $("#titulo").value.trim() || archivo.nombre.replace(/\.pdf$/i, ""),
+          fecha, vencimiento: $("#vencimiento").value, estado: $("#estado").value,
+          archivo: { nombre: archivo.nombre, tipo: "application/pdf", tamano: archivo.tamano || archivo.datos.size, datos: archivo.datos },
+        });
+        U.aviso(id ? "Factura actualizada" : "Factura subida");
+        location.hash = `${t.ruta}/ver/${nuevoId}`;
+      } catch (err) {
+        alert(`No se pudo guardar: ${err.message}`);
+        $("#guardar").disabled = false;
+      }
+    });
+
+    pintarArchivo();
+    pintarTotal();
+  }
+
+  /** Vista de una factura subida: datos y el PDF original en un visor. */
+  async function vistaSubida(id, cont) {
+    const t = TEXTOS.factura;
+    const doc = await DB.obtener("documentos", id);
+    const emisor = await DB.obtenerAjustes();
+    const nombre = U.nombreDocumento(doc);
+    const tot = U.totalesDocumento(doc);
+    const url = URL.createObjectURL(doc.archivo.datos);
+
+    cont.innerHTML = `
+      <div class="cabecera no-print">
+        <div>
+          <a href="${t.ruta}" class="volver">← ${t.plural}</a>
+          <h1 style="margin-top:6px">${U.esc(nombre)} <span class="etiqueta pdf">PDF</span> ${etiqueta("factura", doc.estado)}</h1>
+        </div>
+        <div class="acciones">
+          <button class="boton" id="cambiar-estado">${doc.estado === "pagada" ? "Marcar pendiente" : "Marcar pagada"}</button>
+          <a class="boton" href="${t.ruta}/editar/${id}">Editar datos</a>
+          <button class="boton" id="pdf">Descargar PDF</button>
+          <button class="boton" id="imprimir">Imprimir</button>
+          <button class="boton primario" id="enviar">Enviar por email</button>
+          <button class="boton peligro" id="eliminar">Eliminar</button>
+        </div>
+      </div>
+      ${(doc.envios || []).length ? `<div class="envios">✉️ ${doc.envios.slice().reverse().map((e) =>
+        `Enviado a ${U.esc(e.para || "—")} el ${U.fechaES(e.fecha.slice(0, 10))} a las ${e.fecha.slice(11, 16)} · ${U.esc(e.via)}`).join("<br>")}</div>` : ""}
+
+      <div class="panel datos-subida">
+        <div><span>Fecha</span><strong>${U.fechaES(doc.fecha)}</strong></div>
+        ${doc.vencimiento ? `<div><span>Vencimiento</span><strong>${U.fechaES(doc.vencimiento)}</strong></div>` : ""}
+        <div><span>Cliente</span><strong>${U.esc(doc.cliente.nombre) || "—"}</strong></div>
+        <div><span>Base imponible</span><strong>${U.euros(tot.base)}</strong></div>
+        <div><span>IVA</span><strong>${U.euros(tot.totalIva)}</strong></div>
+        ${tot.irpf ? `<div><span>Retención IRPF</span><strong>−${U.euros(tot.irpf)}</strong></div>` : ""}
+        <div><span>Total</span><strong>${U.euros(tot.total)}</strong></div>
+        <div><span>Archivo</span><strong>${U.esc(doc.archivo.nombre)}</strong></div>
+      </div>
+
+      <div class="visor-pdf">
+        <iframe src="${url}" title="${U.esc(nombre)}"></iframe>
+        <p class="texto-suave">¿No ves el PDF? <a href="${url}" target="_blank" rel="noopener">Ábrelo en otra pestaña</a>.</p>
+      </div>`;
+
+    const $ = (sel) => cont.querySelector(sel);
+    $("#pdf").addEventListener("click", () => PDF.descargar(doc, emisor));
+    $("#imprimir").addEventListener("click", async () => {
+      try { await imprimir([doc], emisor); } catch (e) { alert(`No se pudo imprimir: ${e.message}`); }
+    });
+    $("#enviar").addEventListener("click", () =>
+      Correo.abrirVentana(doc, emisor, async (envio) => {
+        await registrarEnvio(id, envio);
+        vistaSubida(id, cont);
+      }));
+    $("#cambiar-estado").addEventListener("click", async () => {
+      await DB.poner("documentos", { ...doc, estado: doc.estado === "pagada" ? "pendiente" : "pagada" });
+      vistaSubida(id, cont);
+    });
+    $("#eliminar").addEventListener("click", async () => {
+      if (!confirm(`¿Eliminar "${nombre}"? Se borrará también el PDF guardado. No se puede deshacer.`)) return;
+      await DB.eliminarDocumento(id);
+      U.aviso("Eliminada");
+      location.hash = t.ruta;
+    });
+  }
+
   function noEncontrado(tipo, cont) {
     const t = TEXTOS[tipo];
     cont.innerHTML = `<div class="panel vacio">No se ha encontrado este ${t.singular.toLowerCase()}. <a href="${t.ruta}">Volver</a></div>`;
   }
 
-  return { lista, editor, vista };
+  return { lista, editor, vista, editorSubida };
 })();
