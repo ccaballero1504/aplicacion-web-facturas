@@ -100,7 +100,10 @@ const Documentos = (() => {
                 <td>${d.cliente.nombre ? U.esc(d.cliente.nombre) : '<span class="texto-suave">Sin cliente</span>'}</td>
                 <td>${etiqueta(tipo, d.estado)}</td>
                 <td class="num">${U.euros(totales[i].total)}</td>
-                <td class="num"><button class="boton pequeno" data-enviar="${d.id}">Enviar por email</button></td>
+                <td class="num botones-fila">
+                  <button class="boton pequeno" data-imprimir="${d.id}">Imprimir</button>
+                  <button class="boton pequeno" data-enviar="${d.id}">Enviar por email</button>
+                </td>
               </tr>`).join("")}
           </tbody>
           <tfoot><tr>
@@ -112,9 +115,21 @@ const Documentos = (() => {
     $("#resultados").addEventListener("click", async (e) => {
       const dup = e.target.closest("[data-duplicar]");
       const env = e.target.closest("[data-enviar]");
+      const imp = e.target.closest("[data-imprimir]");
       const fila = e.target.closest("tr[data-id]");
       if (dup) {
         location.hash = `${t.ruta}/duplicar/${dup.dataset.duplicar}`;
+      } else if (imp) {
+        imp.disabled = true;
+        try {
+          const id = Number(imp.dataset.imprimir);
+          const [doc, emisor] = await Promise.all([DB.obtener("documentos", id), DB.obtenerAjustes()]);
+          await imprimir(doc, emisor);
+        } catch (err) {
+          alert(`No se pudo imprimir: ${err.message}`);
+        } finally {
+          imp.disabled = false;
+        }
       } else if (env) {
         const id = Number(env.dataset.enviar);
         const [doc, emisor] = await Promise.all([DB.obtener("documentos", id), DB.obtenerAjustes()]);
@@ -355,45 +370,14 @@ const Documentos = (() => {
     </p>`;
   };
 
-  async function vista(tipo, id, cont) {
-    const t = TEXTOS[tipo];
-    const doc = await DB.obtener("documentos", id);
-    if (!doc || doc.tipo !== tipo) return noEncontrado(tipo, cont);
-    const emisor = await DB.obtenerAjustes();
+  /** HTML de la hoja de la factura/presupuesto (pantalla e impresión). */
+  function htmlHoja(doc, emisor) {
+    const t = TEXTOS[doc.tipo];
+    const tipo = doc.tipo;
     const nombre = U.nombreDocumento(doc);
     const tot = U.calcularTotales(doc.lineas, doc.irpf);
     const hayDto = doc.lineas.some((l) => l.descuento);
-
-    let botonesTipo = "";
-    if (tipo === "factura") {
-      botonesTipo = `<button class="boton" id="cambiar-estado">${doc.estado === "pagada" ? "Marcar pendiente" : "Marcar pagada"}</button>`;
-    } else {
-      botonesTipo = doc.facturaId
-        ? `<a class="boton" href="#/facturas/ver/${doc.facturaId}">Ver factura</a>`
-        : `<button class="boton" id="convertir">Convertir en factura</button>`;
-    }
-
-    cont.innerHTML = `
-      <div class="cabecera no-print">
-        <div>
-          <a href="${t.ruta}" class="volver">← ${t.plural}</a>
-          <h1 style="margin-top:6px">${U.esc(nombre)} ${etiqueta(tipo, doc.estado)}</h1>
-        </div>
-        <div class="acciones">
-          ${botonesTipo}
-          <a class="boton" href="${t.ruta}/duplicar/${id}">Duplicar</a>
-          <a class="boton" href="${t.ruta}/editar/${id}">Editar</a>
-          <button class="boton" id="pdf">Descargar PDF</button>
-          <button class="boton primario" id="enviar">Enviar por email</button>
-          <button class="boton peligro" id="eliminar">Eliminar</button>
-        </div>
-      </div>
-      ${(doc.envios || []).length ? `<div class="envios no-print">✉️ ${doc.envios.slice().reverse().map((e) =>
-        `Enviado a ${U.esc(e.para || "—")} el ${U.fechaES(e.fecha.slice(0, 10))} a las ${e.fecha.slice(11, 16)} · ${U.esc(e.via)}`).join("<br>")}</div>` : ""}
-
-      ${!emisor.nombre || !emisor.nif ? `<div class="aviso no-print">Faltan tus datos fiscales (nombre y NIF). Complétalos en <a href="#/ajustes">Ajustes</a> para que aparezcan en el documento.</div>` : ""}
-      ${doc.presupuestoId ? `<p class="no-print texto-suave">Creada a partir de un <a href="#/presupuestos/ver/${doc.presupuestoId}">presupuesto</a>.</p>` : ""}
-
+    return `
       <article class="hoja">
         <div class="hoja-cab">
           <div>
@@ -446,11 +430,89 @@ const Documentos = (() => {
             ${emisor.notasPie ? `<div style="margin-top:8px">${U.esc(emisor.notasPie)}</div>` : ""}
           </div>` : ""}
       </article>`;
+  }
+
+  /**
+   * Imprime el documento sin salir de la página: lo pinta en un marco oculto con los estilos
+   * de impresión (A4) y abre el diálogo de la impresora. Funciona en cualquier navegador.
+   */
+  function imprimir(doc, emisor) {
+    return new Promise((resolver) => {
+      document.getElementById("marco-impresion")?.remove();
+      const marco = document.createElement("iframe");
+      marco.id = "marco-impresion";
+      marco.title = "Impresión";
+      marco.setAttribute("aria-hidden", "true");
+      marco.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+      const hojaEstilos = new URL("css/estilos.css", location.href.split("#")[0]).href;
+      marco.srcdoc = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+        <title>${U.esc(U.nombreDocumento(doc))}</title>
+        <link rel="stylesheet" href="${U.esc(hojaEstilos)}">
+        <style>body{background:#fff}.hoja{border:none;padding:0;max-width:none}</style>
+        </head><body>${htmlHoja(doc, emisor)}</body></html>`;
+      marco.onload = () => {
+        const ventana = marco.contentWindow;
+        const imgs = [...ventana.document.images].filter((i) => !i.complete);
+        Promise.all(imgs.map((i) => new Promise((r) => { i.onload = i.onerror = r; }))).then(() => {
+          ventana.focus();
+          ventana.print();
+          resolver();
+        });
+      };
+      document.body.appendChild(marco);
+    });
+  }
+
+  async function vista(tipo, id, cont) {
+    const t = TEXTOS[tipo];
+    const doc = await DB.obtener("documentos", id);
+    if (!doc || doc.tipo !== tipo) return noEncontrado(tipo, cont);
+    const emisor = await DB.obtenerAjustes();
+    const nombre = U.nombreDocumento(doc);
+    const tot = U.calcularTotales(doc.lineas, doc.irpf);
+    const hayDto = doc.lineas.some((l) => l.descuento);
+
+    let botonesTipo = "";
+    if (tipo === "factura") {
+      botonesTipo = `<button class="boton" id="cambiar-estado">${doc.estado === "pagada" ? "Marcar pendiente" : "Marcar pagada"}</button>`;
+    } else {
+      botonesTipo = doc.facturaId
+        ? `<a class="boton" href="#/facturas/ver/${doc.facturaId}">Ver factura</a>`
+        : `<button class="boton" id="convertir">Convertir en factura</button>`;
+    }
+
+    cont.innerHTML = `
+      <div class="cabecera no-print">
+        <div>
+          <a href="${t.ruta}" class="volver">← ${t.plural}</a>
+          <h1 style="margin-top:6px">${U.esc(nombre)} ${etiqueta(tipo, doc.estado)}</h1>
+        </div>
+        <div class="acciones">
+          ${botonesTipo}
+          <a class="boton" href="${t.ruta}/duplicar/${id}">Duplicar</a>
+          <a class="boton" href="${t.ruta}/editar/${id}">Editar</a>
+          <button class="boton" id="pdf">Descargar PDF</button>
+          <button class="boton" id="imprimir">Imprimir</button>
+          <button class="boton primario" id="enviar">Enviar por email</button>
+          <button class="boton peligro" id="eliminar">Eliminar</button>
+        </div>
+      </div>
+      ${(doc.envios || []).length ? `<div class="envios no-print">✉️ ${doc.envios.slice().reverse().map((e) =>
+        `Enviado a ${U.esc(e.para || "—")} el ${U.fechaES(e.fecha.slice(0, 10))} a las ${e.fecha.slice(11, 16)} · ${U.esc(e.via)}`).join("<br>")}</div>` : ""}
+
+      ${!emisor.nombre || !emisor.nif ? `<div class="aviso no-print">Faltan tus datos fiscales (nombre y NIF). Complétalos en <a href="#/ajustes">Ajustes</a> para que aparezcan en el documento.</div>` : ""}
+      ${doc.presupuestoId ? `<p class="no-print texto-suave">Creada a partir de un <a href="#/presupuestos/ver/${doc.presupuestoId}">presupuesto</a>.</p>` : ""}
+
+      ${htmlHoja(doc, emisor)}`;
 
     const $ = (sel) => cont.querySelector(sel);
 
     $("#pdf").addEventListener("click", async () => {
       try { await PDF.descargar(doc, emisor); } catch (e) { alert(`No se pudo generar el PDF: ${e.message}`); }
+    });
+
+    $("#imprimir").addEventListener("click", async () => {
+      try { await imprimir(doc, emisor); } catch (e) { alert(`No se pudo imprimir: ${e.message}`); }
     });
 
     $("#enviar").addEventListener("click", () =>

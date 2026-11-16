@@ -165,3 +165,5 @@ code { background: #eef0f4; padding: 1px 5px; border-radius: 4px; font-size: 13p
 .resumen span { font-size: 12px; color: var(--suave); }
 .resumen strong { font-size: 16px; }
 @media (max-width: 760px) { .resumen { grid-template-columns: 1fr 1fr; } }
+.botones-fila { white-space: nowrap; }
+.botones-fila .boton + .boton { margin-left: 6px; }

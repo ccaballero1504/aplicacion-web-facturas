@@ -65,7 +65,7 @@ Los botones *Abrir en Gmail*, *Abrir en Outlook / Hotmail* y *App de correo* abr
 - Columnas **Fecha** (fecha de la factura) y **Creada** (día en que se creó en la app, automática).
 - Filtros por **año** y **trimestre** (1.º ene–mar, 2.º abr–jun, 3.º jul–sep, 4.º oct–dic), además de estado y búsqueda. Encima de la tabla se muestra la suma de base imponible, IVA, retención y total de lo filtrado (útil para las declaraciones trimestrales).
 - **Duplicar** (a la izquierda de cada fila): abre el editor con una copia como documento nuevo, con fecha de hoy y número nuevo.
-- **Enviar por email** (a la derecha de cada fila).
+- **Imprimir** y **Enviar por email** (a la derecha de cada fila). *Imprimir* abre directamente el diálogo de la impresora con la factura en A4, sin salir del listado. También está en la vista de cada documento.
 
 ## Importante sobre los datos
 
